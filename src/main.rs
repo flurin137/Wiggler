@@ -17,14 +17,12 @@ use embassy_usb::Builder;
 use usbd_hid::descriptor::{MouseReport, SerializedDescriptor};
 use {defmt_rtt as _, panic_probe as _};
 
-use {defmt_rtt as _, panic_probe as _};
-
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     let peripherals = embassy_rp::init(Default::default());
     let driver = Driver::new(peripherals.USB, Irqs);
 
