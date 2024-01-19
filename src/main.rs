@@ -8,6 +8,7 @@ use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_rp::bind_interrupts;
+use embassy_rp::gpio::{Input, Pull};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_time::Timer;
@@ -26,11 +27,15 @@ async fn main(_spawner: Spawner) {
     let peripherals = embassy_rp::init(Default::default());
     let driver = Driver::new(peripherals.USB, Irqs);
 
+    // Use PIN_28, Pin34 on J0 for RP Pico, as a input.
+    // You need to add your own button.
+    let button = Input::new(peripherals.PIN_13, Pull::Up);
+
     // Create embassy-usb Config
     let mut config = embassy_usb::Config::new(0xc0de, 0xcafe);
-    config.manufacturer = Some("Embassy");
-    config.product = Some("HID mouse example");
-    config.serial_number = Some("12345678");
+    config.manufacturer = Some("Fx137");
+    config.product = Some("Wiggle wiggle wiggle");
+    config.serial_number = Some("13371337");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
 
@@ -76,17 +81,19 @@ async fn main(_spawner: Spawner) {
         loop {
             Timer::after_millis(500).await;
 
-            y = -y;
-            let report = MouseReport {
-                buttons: 0,
-                x: 0,
-                y,
-                wheel: 0,
-                pan: 0,
-            };
-            match writer.write_serialize(&report).await {
-                Ok(()) => {}
-                Err(e) => warn!("Failed to send report: {:?}", e),
+            if button.is_low() {
+                y = -y;
+                let report = MouseReport {
+                    buttons: 0,
+                    x: 0,
+                    y,
+                    wheel: 0,
+                    pan: 0,
+                };
+                match writer.write_serialize(&report).await {
+                    Ok(()) => {}
+                    Err(e) => warn!("Failed to send report: {:?}", e),
+                }
             }
         }
     };
