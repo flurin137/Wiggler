@@ -4,53 +4,119 @@
 #![feature(async_fn_in_trait)]
 #![allow(stable_features, unknown_lints, async_fn_in_trait)]
 
-use core::str::from_utf8;
-use cyw43_pio::PioSpi;
-use defmt::*;
+use defmt::{info, warn};
 use embassy_executor::Spawner;
+use embassy_futures::join::join;
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::{DMA_CH0, PIN_23, PIN_25, PIO0};
-use embassy_rp::pio::{InterruptHandler, Pio};
-use embassy_time::{Duration, Timer};
-use embedded_io_async::Write;
-use static_cell::make_static;
+use embassy_rp::peripherals::USB;
+use embassy_rp::usb::{Driver, InterruptHandler};
+use embassy_time::Timer;
+use embassy_usb::class::hid::{HidWriter, ReportId, RequestHandler, State};
+use embassy_usb::control::OutResponse;
+use embassy_usb::Builder;
+use usbd_hid::descriptor::{MouseReport, SerializedDescriptor};
+use {defmt_rtt as _, panic_probe as _};
+
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
-    PIO0_IRQ_0 => InterruptHandler<PIO0>;
+    USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let peripherals = embassy_rp::init(Default::default());
+    let driver = Driver::new(peripherals.USB, Irqs);
 
-    let firmware = include_bytes!("../assets/43439A0.bin");
-    let clm = include_bytes!("../assets/43439A0_clm.bin");
+    // Create embassy-usb Config
+    let mut config = embassy_usb::Config::new(0xc0de, 0xcafe);
+    config.manufacturer = Some("Embassy");
+    config.product = Some("HID mouse example");
+    config.serial_number = Some("12345678");
+    config.max_power = 100;
+    config.max_packet_size_0 = 64;
 
-    let pwr = Output::new(peripherals.PIN_23, Level::Low);
-    let cs = Output::new(peripherals.PIN_25, Level::High);
-    let mut pio = Pio::new(peripherals.PIO0, Irqs);
-    let spi = PioSpi::new(
-        &mut pio.common,
-        pio.sm0,
-        pio.irq0,
-        cs,
-        peripherals.PIN_24,
-        peripherals.PIN_29,
-        peripherals.DMA_CH0,
+    // Create embassy-usb DeviceBuilder using the driver and config.
+    // It needs some buffers for building the descriptors.
+    let mut device_descriptor = [0; 256];
+    let mut config_descriptor = [0; 256];
+    let mut bos_descriptor = [0; 256];
+    let mut control_buf = [0; 64];
+    let request_handler = MyRequestHandler {};
+
+    let mut state = State::new();
+
+    let mut builder = Builder::new(
+        driver,
+        config,
+        &mut device_descriptor,
+        &mut config_descriptor,
+        &mut bos_descriptor,
+        &mut [], // no msos descriptors
+        &mut control_buf,
     );
 
-    let state = make_static!(cyw43::State::new());
-    let (net_device, mut control, runner) = cyw43::new(state, pwr, spi, firmware).await;
+    // Create classes on the builder.
+    let config = embassy_usb::class::hid::Config {
+        report_descriptor: MouseReport::desc(),
+        request_handler: Some(&request_handler),
+        poll_ms: 60,
+        max_packet_size: 8,
+    };
 
-    control.init(clm).await;
-    control
-        .set_power_management(cyw43::PowerManagementMode::PowerSave)
-        .await;
+    let mut writer = HidWriter::<_, 5>::new(&mut builder, &mut state, config);
 
-    let mut table_up = Output::new(peripherals.PIN_20, Level::Low);
-    let mut table_down = Output::new(peripherals.PIN_21, Level::Low);
+    // Build the builder.
+    let mut usb = builder.build();
 
-    control.gpio_set(0, true).await;
+    // Run the USB device.
+    let usb_fut = usb.run();
+
+    // Do stuff with the class!
+    let hid_fut = async {
+        let mut y: i8 = 5;
+        loop {
+            Timer::after_millis(500).await;
+
+            y = -y;
+            let report = MouseReport {
+                buttons: 0,
+                x: 0,
+                y,
+                wheel: 0,
+                pan: 0,
+            };
+            match writer.write_serialize(&report).await {
+                Ok(()) => {}
+                Err(e) => warn!("Failed to send report: {:?}", e),
+            }
+        }
+    };
+
+    // Run everything concurrently.
+    // If we had made everything `'static` above instead, we could do this using separate tasks instead.
+    join(usb_fut, hid_fut).await;
+}
+
+struct MyRequestHandler {}
+
+impl RequestHandler for MyRequestHandler {
+    fn get_report(&self, id: ReportId, _buf: &mut [u8]) -> Option<usize> {
+        info!("Get report for {:?}", id);
+        None
+    }
+
+    fn set_report(&self, id: ReportId, data: &[u8]) -> OutResponse {
+        info!("Set report for {:?}: {=[u8]}", id, data);
+        OutResponse::Accepted
+    }
+
+    fn set_idle_ms(&self, id: Option<ReportId>, dur: u32) {
+        info!("Set idle rate for {:?} to {:?}", id, dur);
+    }
+
+    fn get_idle_ms(&self, id: Option<ReportId>) -> Option<u32> {
+        info!("Get idle rate for {:?}", id);
+        None
+    }
 }

@@ -380,6 +380,9 @@ dependencies = [
 [[package]]
 name = "embassy-futures"
 version = "0.1.1"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "embassy-hal-internal"
@@ -1410,6 +1413,7 @@ dependencies = [
  "defmt-rtt",
  "embassy-embedded-hal",
  "embassy-executor",
+ "embassy-futures",
  "embassy-rp",
  "embassy-time",
  "embassy-usb",
@@ -1425,6 +1429,7 @@ dependencies = [
  "panic-probe",
  "portable-atomic",
  "static_cell",
+ "usbd-hid",
 ]
 
 [[package]]
