@@ -8,7 +8,7 @@ use defmt::{info, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_rp::bind_interrupts;
-use embassy_rp::gpio::{Input, Pull};
+use embassy_rp::gpio::{Input, Level, Output, Pull};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_time::Timer;
@@ -30,6 +30,7 @@ async fn main(_spawner: Spawner) {
     // Use PIN_28, Pin34 on J0 for RP Pico, as a input.
     // You need to add your own button.
     let button = Input::new(peripherals.PIN_13, Pull::Up);
+    let mut led = Output::new(peripherals.PIN_9, Level::Low);
 
     // Create embassy-usb Config
     let mut config = embassy_usb::Config::new(0xc0de, 0xcafe);
@@ -77,11 +78,22 @@ async fn main(_spawner: Spawner) {
 
     // Do stuff with the class!
     let hid_fut = async {
+        let mut state = false;
         let mut y: i8 = 5;
+
         loop {
             Timer::after_millis(500).await;
+            led.set_low();
 
             if button.is_low() {
+                state = !state;
+
+                info!("Setting state to {}", state);
+            }
+
+            if state {
+                led.set_high();
+
                 y = -y;
                 let report = MouseReport {
                     buttons: 0,
