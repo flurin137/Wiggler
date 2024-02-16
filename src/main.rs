@@ -51,7 +51,7 @@ async fn main(spawner: Spawner) {
         &mut device_descriptor,
         &mut config_descriptor,
         &mut bos_descriptor,
-        &mut [], // no msos descriptors
+        &mut [],
         &mut control_buf,
     );
 
@@ -75,8 +75,8 @@ async fn main(spawner: Spawner) {
         let mut y: i8 = 5;
 
         loop {
-            Timer::after_millis(500).await;
-
+            Timer::after_millis(20).await;
+            
             if ENABLE_WIGGLE.load(Ordering::Relaxed) {
                 y = -y;
                 let report = MouseReport {
@@ -120,6 +120,8 @@ async fn read_button(button_pin: AnyPin) {
 
     loop {
         button.wait_for_falling_edge().await;
+
+        info!("falling edge detected");
 
         let stored_value = ENABLE_WIGGLE.load(Ordering::Relaxed);
         ENABLE_WIGGLE.store(!stored_value, Ordering::Relaxed);
