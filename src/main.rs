@@ -13,6 +13,7 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::signal::Signal;
+use embassy_time::Timer;
 use embassy_usb::class::hid::{HidWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::Builder;
@@ -82,6 +83,7 @@ async fn main(spawner: Spawner) {
 
             if enable {
                 led.set_high();
+
                 y = -y;
                 let report = MouseReport {
                     buttons: 0,
@@ -113,6 +115,8 @@ async fn read_button(button_pin: AnyPin) {
         button.wait_for_falling_edge().await;
 
         info!("falling edge detected");
+
+        Timer::after_millis(100).await;
 
         ENABLE_WIGGLE.signal(value);
         value = !value;
