@@ -3,17 +3,7 @@
 ## Dependencies
 - [Embassy](https://embassy.dev)
 
-Currently building on top of commit `20fd03a14f1261e7b2264dcbca8e164393e66b94`
-
 ## Build
-Make sure to place next to the cloned embassy repository:
-
-```
-- <someRoot>
-   |- embassy
-   ┕- wiggler << This Repository
-```
-
 
 Build with 
 ```
