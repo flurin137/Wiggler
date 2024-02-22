@@ -18,6 +18,7 @@ usbd-hid = "0.6.1"
 cortex-m = { version = "0.7.7", features = ["inline-asm"] }
 cortex-m-rt = "0.7.3"
 panic-probe = { version = "0.3.1", features = ["print-defmt"] }
+embassy-sync = "0.5.0"
 
 [profile.release]
 debug = 2
