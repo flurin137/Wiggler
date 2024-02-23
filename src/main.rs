@@ -13,8 +13,6 @@ use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{AnyPin, Input, Level, Output, Pin, Pull};
 use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
-use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Timer};
 use embassy_usb::class::hid::{HidWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
@@ -26,7 +24,6 @@ bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
-static ENABLE_LED: Signal<ThreadModeRawMutex, bool> = Signal::new();
 static ENABLE_WIGGLE: AtomicBool = AtomicBool::new(false);
 
 #[embassy_executor::main]
@@ -66,7 +63,7 @@ async fn main(spawner: Spawner) {
         max_packet_size: 8,
     };
 
-    unwrap!(spawner.spawn(button_task(
+    unwrap!(spawner.spawn(io_task(
         peripherals.PIN_13.degrade(),
         peripherals.PIN_9.degrade()
     )));
@@ -107,7 +104,7 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn button_task(button_pin: AnyPin, led_pin: AnyPin) {
+async fn io_task(button_pin: AnyPin, led_pin: AnyPin) {
     let mut button = Input::new(button_pin, Pull::Up);
     let mut led = Output::new(led_pin, Level::Low);
 
