@@ -4,6 +4,8 @@
 #![feature(async_fn_in_trait)]
 #![allow(stable_features, unknown_lints, async_fn_in_trait)]
 
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use defmt::{info, unwrap, warn};
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
@@ -13,7 +15,7 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::signal::Signal;
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer};
 use embassy_usb::class::hid::{HidWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::Builder;
@@ -24,7 +26,8 @@ bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
 
-static ENABLE_WIGGLE: Signal<ThreadModeRawMutex, bool> = Signal::new();
+static ENABLE_LED: Signal<ThreadModeRawMutex, bool> = Signal::new();
+static ENABLE_WIGGLE: AtomicBool = AtomicBool::new(false);
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -63,9 +66,10 @@ async fn main(spawner: Spawner) {
         max_packet_size: 8,
     };
 
-    let mut led = Output::new(peripherals.PIN_9, Level::Low);
-
-    unwrap!(spawner.spawn(read_button(peripherals.PIN_13.degrade())));
+    unwrap!(spawner.spawn(button_task(
+        peripherals.PIN_13.degrade(),
+        peripherals.PIN_9.degrade()
+    )));
 
     let mut writer = HidWriter::<_, 5>::new(&mut builder, &mut state, config);
 
@@ -77,13 +81,10 @@ async fn main(spawner: Spawner) {
         let mut y: i8 = 5;
 
         loop {
-            let enable = ENABLE_WIGGLE.wait().await;
+            let enable = ENABLE_WIGGLE.load(Ordering::Relaxed);
 
-            led.set_low();
-
+            Timer::after(Duration::from_millis(500)).await;
             if enable {
-                led.set_high();
-
                 y = -y;
                 let report = MouseReport {
                     buttons: 0,
@@ -106,20 +107,26 @@ async fn main(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn read_button(button_pin: AnyPin) {
+async fn button_task(button_pin: AnyPin, led_pin: AnyPin) {
     let mut button = Input::new(button_pin, Pull::Up);
+    let mut led = Output::new(led_pin, Level::Low);
 
     let mut value = false;
 
     loop {
         button.wait_for_falling_edge().await;
+        value = !value;
+
+        let level = match value {
+            true => Level::High,
+            false => Level::Low,
+        };
+        led.set_level(level);
 
         info!("falling edge detected");
+        ENABLE_WIGGLE.store(value, Ordering::Relaxed);
 
         Timer::after_millis(100).await;
-
-        ENABLE_WIGGLE.signal(value);
-        value = !value;
     }
 }
 
