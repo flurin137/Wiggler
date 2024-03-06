@@ -119,11 +119,10 @@ async fn io_task(button_pin: AnyPin, led_pin: AnyPin) {
             false => Level::Low,
         };
         led.set_level(level);
-
-        info!("falling edge detected");
         ENABLE_WIGGLE.store(value, Ordering::Relaxed);
 
-        Timer::after_millis(100).await;
+        Timer::after_millis(10).await;
+        button.wait_for_high().await;
     }
 }
 
